@@ -1,0 +1,2632 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+
+  <meta charset="utf-8">
+  <title>Doom Level Viewer</title>
+  <style>
+    body {
+      background-color: #1f1f1f;
+      color: #ffffff;
+      font-family: 'Arial', sans-serif;
+      font-size: 150%;
+    }
+
+    #screenWrapper {
+      resize: vertical;
+      overflow: hidden;
+      height: 70vh;
+      max-height: 95%;
+      min-height: 10%;
+      display: none;
+      padding-bottom: 25px;
+      user-select: none;
+    }
+
+    #screenWrapper::moz-resizer {
+      width: 0;
+      height: 0;
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
+      border-top: 10px solid white;
+    }
+
+    #screenWrapper::-webkit-resizer {
+      width: 0;
+      height: 0;
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
+      border-top: 10px solid white;
+    }
+
+    #screen {
+      height: 100%;
+      image-rendering: pixelated;
+    }
+
+    #fpsCounter {
+      position: absolute;
+      top: 0px;
+      left: 0px;
+      border: white thin solid;
+      color: white;
+      font-weight: bold;
+    }
+
+    #controlsPrompt {
+      font-size: 100%;
+      padding: 20px;
+      background-color: #333333;
+      border: 2px solid #ffffff;
+      border-radius: 10px;
+      display: inline-block;
+    }
+
+    #controlsPrompt strong {
+      text-decoration: underline;
+      color: #ffffff;
+    }
+
+    .centered {
+      position: fixed;
+      transform: translate(-50%, -50%);
+      top: 50%;
+      left: 50%;
+    }
+
+    .mapChooser {
+      color: white;
+      text-decoration: underline;
+      cursor: pointer;
+      transition: 0.1s;
+    }
+
+    .mapChooser:hover {
+      color: red;
+      text-decoration: none;
+    }
+
+    .mapChooser:active {
+      cursor: wait;
+    }
+
+    #settingsUi {
+      width: 400px;
+      margin: 50px auto;
+      padding: 20px;
+      background-color: #333333;
+      border: 2px solid #ffffff;
+      border-radius: 10px;
+    }
+
+    #settingsUi h2 {
+      margin-bottom: 15px;
+      font-size: 24px;
+    }
+
+    #settingsUi input.resChooser {
+      margin-right: 10px;
+      cursor: pointer;
+    }
+
+    #settingsUi label {
+      margin-right: 20px;
+      font-size: 18px;
+      cursor: pointer;
+      transition: 0.1s;
+    }
+
+    #settingsUi label:hover {
+      color: red;
+    }
+
+    #settingsUi input[type="file"] {
+      margin-top: 10px;
+      background-color: #555555;
+      color: #ffffff;
+      padding: 10px;
+      border: 1px solid #ffffff;
+      border-radius: 5px;
+      transition: 0.1s;
+    }
+
+    #settingsUi input[type="file"]:hover {
+      cursor: pointer;
+      color: red;
+    }
+
+    @media (orientation: portrait) {
+      #screenWrapper {
+        height: auto;
+        width: 100%;
+      }
+
+      #screen {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="controlsPrompt">
+    <strong>Controls:</strong> WASD + LEFT and RIGHT arrows.<br>
+    (Render area is touchscreen enabled.)
+  </div>
+  <form id="settingsUi">
+    <div>
+      <h2>Rendering resolution</h2>
+      <input type="radio" id="res1" name="res" value="1" class="resChooser" checked>
+      <label for="res1">320x200</label><br>
+      <input type="radio" id="res2" name="res" value="2" class="resChooser">
+      <label for="res2">640x400</label><br>
+      <input type="radio" id="res3" name="res" value="3" class="resChooser">
+      <label for="res3">960x600</label><br>
+      <input type="radio" id="res4" name="res" value="4" class="resChooser">
+      <label for="res4">1280x800</label><br>
+      <input type="radio" id="res5" name="res" value="5" class="resChooser">
+      <label for="res5">1600x1000</label><br>
+    </div>
+    <div>
+      <h2>Open your IWAD file (e.g. "DOOM1.wad"):</h2>
+      <input type="file" id="wadInput" accept=".wad">
+    </div>
+  </form>
+
+  <ul id="mapNameList">
+  </ul>
+
+  <div id="screenWrapper" class="centered">
+    <div id="fpsCounter">60 fps</div>
+    <canvas width="320" height="200" id="screen"></canvas>
+  </div>
+
+  <script id="colorScript">
+    class Color {
+      constructor(r, g, b) {
+        this.r = r;
+        this.g = g;
+        this.b = b;
+        this.style = this.getStyleRGB();
+      }
+
+      getStyleRGB() {
+        var rgb = `rgb(${this.r},${this.g},${this.b})`;
+        return rgb;
+      }
+    }
+
+    Color.randColors = new Array(1000);
+
+    Color.initRandColors = function () {
+      for (var i = 0; i < this.randColors.length; i++) {
+        this.randColors[i] = this.getRandom();
+      }
+    };
+
+    Color.randInt = function (min, max) {
+      return min + Math.floor(Math.random() * (max - min + 1));
+    };
+
+    Color.getRandom = function () {
+      const r = this.randInt(0, 255);
+      const g = this.randInt(0, 255);
+      const b = this.randInt(0, 255);
+      return new Color(r, g, b);
+    }
+
+    Color.initRandColors();
+  </script>
+  <script id="settingsScript">
+    const DOOM_W = 320;
+    const DOOM_H = 200;
+    const DOOM_RES = [DOOM_W, DOOM_H];
+
+    var SCALE = 1;
+
+    var WIN_WIDTH = Math.floor(DOOM_W * SCALE);
+    var WIN_HEIGHT = Math.floor(DOOM_H * SCALE);
+    var WIN_RES = [WIN_WIDTH, WIN_HEIGHT];
+
+    var H_WIDTH = WIN_WIDTH / 2;
+    var H_HEIGHT = WIN_HEIGHT / 2;
+
+    const FOV = 90;
+    const H_FOV = FOV / 2;
+
+    const PLAYER_SPEED = 0.15;//0.3;
+    const PLAYER_ROT_SPEED = 0.12;
+    const PLAYER_HEIGHT = 41;
+
+    var SCREEN_DIST = H_WIDTH / Math.tan(H_FOV * Math.PI / 180);
+    const COLOR_KEY = new Color(152, 0, 136);
+  </script>
+  <script id="vector2Script">
+    class vec2 {
+      constructor(x, y) {
+        this.x = x;
+        this.y = y;
+      }
+
+      rotate(degrees) {
+        var angle = degrees * (Math.PI / 180);
+        var cos = Math.cos(angle);
+        var sin = Math.sin(angle);
+        var rotX = Math.round(10000 * (this.x * cos - this.y * sin)) / 10000;
+        var rotY = Math.round(10000 * (this.x * sin + this.y * cos)) / 10000;
+        this.x = rotX;
+        this.y = rotY;
+      }
+
+      plusEquals(other) {
+        this.x += other.x;
+        this.y += other.y;
+      }
+
+      multiplyEquals(n) {
+        this.x *= n;
+        this.y *= n;
+      }
+
+      minus(other) {
+        return new vec2(this.x - other.x, this.y - other.y);
+      }
+    }
+
+    var rotateVector = function (vec, ang) {
+      ang = -ang * (Math.PI / 180);
+      var cos = Math.cos(ang);
+      var sin = Math.sin(ang);
+      return new Array(Math.round(10000 * (vec[0] * cos - vec[1] * sin)) / 10000, Math.round(10000 * (vec[0] * sin + vec[1] * cos)) / 10000);
+    };
+  </script>
+  <script id="dataTypesScript">
+    class TextureMap {
+      constructor(
+        name,
+        flags,
+        width,
+        height,
+        columnDir,
+        patchCount,
+        patchMaps = new Array()
+      ) {
+        this.name = name;
+        this.flags = flags;
+        this.width = width;
+        this.height = height;
+        this.columnDir = columnDir;
+        this.patchCount = patchCount;
+        this.patchMaps = patchMaps;
+      }
+    }
+
+    class PatchMap {
+      constructor(
+        xOffset,
+        yOffset,
+        pNameIndex,
+        stepDir,
+        colorMap
+      ) {
+        this.xOffset = xOffset;
+        this.yOffset = yOffset;
+        this.pNameIndex = pNameIndex;
+        this.stepDir = stepDir;
+        this.colorMap = colorMap;
+      }
+    }
+
+    class TextureHeader {
+      constructor(textureCount, textureOffset, textureDataOffset = new Array()) {
+        this.textureCount = textureCount;
+        this.textureOffset = textureOffset;
+        this.textureDataOffset = textureDataOffset;
+      }
+    }
+
+    class PatchColumn {
+      constructor(topDelta, length, paddingPre, data, paddingPost) {
+        this.topDelta = topDelta;
+        this.length = length;
+        this.paddingPre = paddingPre;
+        this.data = data;
+        this.paddingPost = paddingPost;
+      }
+    }
+
+    class PatchHeader {
+      constructor(width, height, leftOffset, topOffset, columnOffset) {
+        this.width = width;
+        this.height = height;
+        this.leftOffset = leftOffset;
+        this.topOffset = topOffset;
+        this.columnOffset = columnOffset;
+      }
+    }
+
+    class Thing {
+      constructor(
+        pos, // vec2(x,y)
+        angle,
+        type,
+        flags
+      ) {
+        this.pos = pos;
+        this.angle = angle;
+        this.type = type;
+        this.flags = flags;
+      }
+    }
+
+    class Seg {
+      constructor(
+        startVertexId,
+        endVertexId,
+        angle,
+        linedefId,
+        direction,
+        offset
+      ) {
+        this.startVertexId = startVertexId
+        this.endVertexId = endVertexId
+        this.angle = angle
+        this.linedefId = linedefId
+        this.direction = direction
+        this.offset = offset
+
+        this.startVertex = null;
+        this.endVertex = null;
+        this.linedef = null;
+        this.frontSector = null;
+        this.backSector = null;
+      }
+    }
+
+    class SubSector {
+      constructor(segCount, firstSegId) {
+        this.segCount = segCount;
+        this.firstSegId = firstSegId;
+      }
+    }
+
+    class Node {
+
+      constructor(
+        /*xPartition,
+        yPartition,
+        dxPartition,
+        dyPartition,
+        bbox,
+        frontChildId,
+        backChildId*/
+      ) {
+        this.xPartition = undefined;
+        this.yPartition = undefined;
+        this.dxPartition = undefined;
+        this.dyPartition = undefined;
+        this.bbox = {
+          front: new BBox(),
+          back: new BBox()
+        };
+        this.frontChildId = undefined;
+        this.backChildId = undefined;
+      }
+    }
+
+    class BBox {
+      constructor(top, bottom, left, right) {
+        this.top = top;
+        this.bottom = bottom;
+        this.left = left;
+        this.right = right;
+      }
+    }
+
+    class Linedef {
+      constructor(
+        startVertexId,
+        endVertexId,
+        flags,
+        lineType,
+        sectorTag,
+        frontSidedefId,
+        backSidedefId
+      ) {
+        this.startVertexId = startVertexId;
+        this.endVertexId = endVertexId;
+        this.flags = flags;
+        this.lineType = lineType;
+        this.sectorTag = sectorTag;
+        this.frontSidedefId = frontSidedefId;
+        this.backSidedefId = backSidedefId;
+
+        this.frontSidedef = null;
+        this.backSidedef = null;
+      }
+    }
+
+    class Sector {
+      constructor(
+        floorHeight,
+        ceilHeight,
+        floorTexture,
+        ceilTexture,
+        lightLevel,
+        type,
+        tag
+      ) {
+        this.floorHeight = floorHeight;
+        this.ceilHeight = ceilHeight;
+        this.floorTexture = floorTexture;
+        this.ceilTexture = ceilTexture;
+        this.lightLevel = lightLevel;
+        this.type = type;
+        this.tag = tag;
+      }
+    }
+
+    class Sidedef {
+      constructor(
+        xOffset,
+        yOffset,
+        upperTexture,
+        lowerTexture,
+        middleTexture,
+        sectorId
+      ) {
+        this.xOffset = xOffset;
+        this.yOffset = yOffset;
+        this.upperTexture = upperTexture;
+        this.lowerTexture = lowerTexture;
+        this.middleTexture = middleTexture;
+        this.sectorId = sectorId;
+
+        this.sector = null;
+      }
+    }
+  </script>
+  <script id="assetDataScript">
+    class Patch {
+      constructor(assetData, name, isSprite = true) {
+        this.assetData = assetData;
+        this.name = name;
+
+        this.palette = assetData.palette;
+        var load = this.loadPatchColumns(name);
+        this.header = load.header;
+        this.patchColumns = load.columns;
+        this.width = this.header.width;
+        this.height = this.header.height;
+        this.image = this.getImage();
+        if (isSprite) {
+          var scaled = new OffscreenCanvas(this.image.width * SCALE, this.image.height * SCALE)
+          var scaleCtx = scaled.getContext("2d");
+          scaleCtx.imageSmoothingEnabled = false;
+          scaleCtx.drawImage(this.image, 0, 0, scaled.width, scaled.height);
+          this.image = scaled;
+        }
+      }
+
+      loadPatchColumns(patchName) {
+        var reader = this.assetData.reader;
+        var patchIndex = this.assetData.getLumpIndex(patchName);
+        var patchOffset = reader.directory[patchIndex]["lumpOffset"];
+        var patchHeader = this.assetData.reader.readPatchHeader(patchOffset);
+        var patchColumns = new Array();
+
+        for (var i = 0; i < patchHeader.width; i++) {
+          var offs = patchOffset + patchHeader.columnOffset[i];
+          while (true) {
+            var reading = reader.readPatchColumn(offs);
+            var patchColumn = reading.pc;
+            offs = reading.offs;
+            patchColumns.push(patchColumn);
+            if (patchColumn.topDelta === 0xff) break;
+          }
+        }
+        return { header: patchHeader, columns: patchColumns };
+      }
+
+      getImage() {
+        var image = new OffscreenCanvas(this.width, this.height);
+        var ctx = image.getContext("2d");
+        ctx.imageSmoothingEnabled = false;
+        var imageData = ctx.createImageData(image.width, image.height);
+        var data = imageData.data;
+        var ix = 0;
+        for (var column of this.patchColumns) {
+          if (column.topDelta === 0xff) {
+            ix++;
+            continue;
+          }
+          for (var iy = 0; iy < column.length; iy++) {
+            var colorIdx = column.data[iy];
+            var color = this.palette[colorIdx];
+            //ctx.fillStyle = color.style;
+            //ctx.fillRect(ix, iy + column.topDelta, 1, 1);
+            var index = 4 * (image.width * Math.floor(iy + column.topDelta) + Math.floor(ix));
+            data[index] = color.r;
+            data[index + 1] = color.g;
+            data[index + 2] = color.b;
+            data[index + 3] = 255;
+          }
+        }
+        ctx.putImageData(imageData, 0, 0);
+        return image;
+      }
+    }
+
+    class Texture {
+      constructor(assetData, texMap) {
+        this.assetData = assetData;
+        this.texMap = texMap;
+        this.image = this.getImage();
+      }
+
+      getImage() {
+        var image = new OffscreenCanvas(this.texMap.width, this.texMap.height);
+        var ctx = image.getContext("2d");
+        ctx.imageSmoothingEnabled = false;
+        for (var patchMap of this.texMap.patchMaps) {
+          var patch = this.assetData.texturePatches[patchMap.pNameIndex];
+          /*var buffer = new OffscreenCanvas(patch.image.width, patch.image.height);
+          var bufferCtx = buffer.getContext("2d");
+          bufferCtx.putImageData(patch.image, 0, 0);
+          ctx.drawImage(buffer, patchMap.xOffset, patchMap.yOffset);*/
+          ctx.drawImage(patch.image, patchMap.xOffset, patchMap.yOffset)
+        }
+        return ctx.getImageData(0, 0, image.width, image.height);
+      }
+    }
+
+    class Flat {
+      constructor(assetData, flatData) {
+        this.flatData = flatData;
+        this.palette = assetData.palette;
+        this.image = this.getImage();
+      }
+
+      getImage() {
+        var image = new OffscreenCanvas(64, 64); // apparently, all flats are this size
+        var ctx = image.getContext("2d");
+        ctx.imageSmoothingEnabled = false;
+        var imageData = ctx.createImageData(image.width, image.height);
+        var data = imageData.data;
+        for (var i = 0; i < this.flatData.length; i++) {
+          var ix = i % 64;
+          var iy = Math.floor(i / 64);
+          var colorIdx = this.flatData[i];
+          var color = this.palette[colorIdx];
+          //ctx.fillStyle = color.style;
+          //ctx.fillRect(ix, iy, 1, 1);
+          var index = 4 * (image.width * Math.floor(iy) + Math.floor(ix));
+          data[index] = color.r;
+          data[index + 1] = color.g;
+          data[index + 2] = color.b;
+          data[index + 3] = 255;
+        }
+        ctx.putImageData(imageData, 0, 0);
+        return ctx.getImageData(0, 0, image.width, image.height);
+      }
+    }
+
+    class AssetData {
+      constructor(wadData) {
+        this.wadData = wadData;
+        this.reader = wadData.reader;
+        this.getLumpIndex = wadData.getLumpIndex;
+        this.unknownTexture = this.createUnknownTexture(64, 8);
+
+        this.palettes = this.wadData.getLumpData(
+          "readPalette",
+          this.getLumpIndex("PLAYPAL"),
+          256 * 3
+        );
+
+        this.palette_idx = 0;
+        this.palette = this.palettes[this.palette_idx];
+        this.sprites = this.getSprites("S_START", "S_END");
+
+        this.pNames = this.wadData.getLumpData( // here we get one too many :O ???
+          "readString",
+          this.getLumpIndex("PNAMES"),
+          8,
+          4
+        );
+        // this.pNames.pop();
+
+        this.texturePatches = new Array();
+        for (var i = 0; i < this.pNames.length; i++) {
+          var pName = this.pNames[i];
+          //console.log(i, pName);
+          var testIndex = this.getLumpIndex(pName);
+          var upperPName = pName.toUpperCase();
+          if (testIndex < 0) testIndex = this.getLumpIndex(upperPName);
+          if (testIndex < 0) {
+            this.texturePatches.push(null);
+            continue;
+          }
+          else pName = upperPName;
+          var patch = new Patch(this, pName, false);
+          this.texturePatches.push(patch);
+        }
+
+        var textureMaps = this.loadTextureMaps("TEXTURE1");
+        if (this.getLumpIndex("TEXTURE2") >= 0) {
+          textureMaps = textureMaps.concat(
+            this.loadTextureMaps("TEXTURE2")
+          );
+        }
+        this.textures = new Object();
+        for (var texMap of textureMaps) {
+          this.textures[texMap.name] = new Texture(this, texMap).image;
+        }
+        this.textures = { ...this.textures, ...this.getFlats() } // ?? merge or concatenate???
+        this.skyId = "F_SKY1"; // always?
+        this.skyTexName = "SKY1"; // always?
+        this.skyTex = this.textures[this.skyTexName];
+      }
+
+      createUnknownTexture(sideLength = 64, numSquares = 8) {
+        var canvas = new OffscreenCanvas(sideLength, sideLength);
+        var ctx = canvas.getContext("2d");
+        var squareLength = sideLength / numSquares;
+
+        for (var y = 0; y < numSquares; y++) {
+          for (var x = 0; x < numSquares; x++) {
+            var evenRow = y % 2 === 0;
+            var evenCol = x % 2 === 0;
+            var blue = "rgb(0,0,255)";
+            var yellow = "rgb(255,255,0)";
+            var style;
+            if (evenRow && evenCol) style = blue;
+            if (evenRow && !evenCol) style = yellow;
+            if (!evenRow && evenCol) style = yellow;
+            if (!evenRow && !evenCol) style = blue;
+            ctx.fillStyle = style;
+            ctx.fillRect(x * squareLength, y * squareLength, squareLength, squareLength);
+          }
+        }
+        return ctx.getImageData(0, 0, sideLength, sideLength);
+      }
+
+      getTexture(textureId) {
+        var texture = this.textures[textureId];
+        if (texture) return texture;
+        texture = this.textures[textureId.toUpperCase()];
+        if (texture) return texture;
+        texture = this.textures[textureId.toLowerCase()];
+        if (texture) return texture;
+        return this.unknownTexture;
+      }
+
+      getSprites(startMarker = "S_START", endMarker = "S_END") {
+        var idx1 = this.getLumpIndex(startMarker) + 1;
+        var idx2 = this.getLumpIndex(endMarker); // exclusive
+        var lumpInfo = this.reader.directory.slice(idx1, idx2);
+        var sprites = new Object();
+        for (var lump of lumpInfo) {
+          var patch = new Patch(this, lump["lumpName"])
+          if (patch) sprites[lump["lumpName"]] = patch.image;
+        }
+        return sprites;
+      }
+
+      getFlats(startMarker = "F_START", endMarker = "F_END") {
+        var idx1 = this.getLumpIndex(startMarker) + 1;
+        var idx2 = this.getLumpIndex(endMarker);
+        var flatLumps = this.reader.directory.slice(idx1, idx2);
+
+        var flats = new Object();
+        for (var flatLump of flatLumps) {
+          var offset = flatLump["lumpOffset"];
+          var size = flatLump["lumpSize"];
+
+          var flatData = new Array();
+          for (var i = 0; i < size; i++) {
+            flatData.push(this.reader.read1ByteUnsigned(offset + i));
+          }
+          //console.log(flatData);
+          var flatName = flatLump["lumpName"];
+          flats[flatName] = new Flat(this, flatData).image;
+        }
+        return flats;
+      }
+
+      loadTextureMaps(textureLumpName) {
+        var texIdx = this.getLumpIndex(textureLumpName);
+        var offset = this.reader.directory[texIdx]["lumpOffset"];
+
+        var textureHeader = this.reader.readTextureHeader(offset);
+        var textureMaps = new Array();
+        for (var i = 0; i < textureHeader.textureCount; i++) {
+          var texMap = this.reader.readTextureMap(
+            offset + textureHeader.textureDataOffset[i]
+          );
+          textureMaps.push(texMap);
+        }
+        return textureMaps;
+      }
+    }
+  </script>
+  <script id="playerScript">
+    class Player {
+      constructor(engine) {
+        this.engine = engine;
+        this.thing = engine.wadData.things[0];
+        this.pos = this.thing.pos;
+        this.angle = this.thing.angle;
+        this.DIAG_MOVE_CORR = 1 / Math.sqrt(2);
+        this.height = PLAYER_HEIGHT;
+
+        this.moveIntensity = 1;
+        this.rotationIntensity = 1;
+      }
+
+      update() {
+        //this.getHeight();
+        this.control();
+      }
+
+      getHeight() {
+        this.height = this.engine.bsp.getSubSectorHeight() + PLAYER_HEIGHT;
+      }
+
+      setMoveIntensity(touch, screen) {
+        var middle = {
+          x: screen.width / 2,
+          y: screen.height / 2
+        }
+        var distance = this.engine.segHandler.dist(touch, middle);
+        this.moveIntensity = distance / middle.y;
+      }
+
+      setRotationIntensity(touch, screen) {
+        var screenHalf = screen.width / 2;
+        var distance = touch.x < screenHalf ? screenHalf - touch.x : touch.x - screenHalf;
+        this.rotationIntensity = distance / screenHalf;
+      }
+
+      control() {
+        var deltaTime = Main.loopTime * 2.5;//60;
+        var speed = PLAYER_SPEED * deltaTime * this.moveIntensity;
+        var rotSpeed = PLAYER_ROT_SPEED * deltaTime * this.rotationIntensity;
+        //rotate
+        if (Main.heldKeys["ArrowLeft"]) this.angle += rotSpeed;
+        if (Main.heldKeys["ArrowRight"]) this.angle -= rotSpeed;
+        // loop back if past 360 or under 0???!!
+
+
+        var inc = new vec2(0, 0);
+        if (Main.heldKeys["a"]) {
+          inc.y = speed;
+        }
+        if (Main.heldKeys["d"]) {
+          inc.y = -speed;
+        }
+        if (Main.heldKeys["w"]) {
+          inc.x = speed;
+        }
+        if (Main.heldKeys["s"]) {
+          inc.x = -speed;
+        }
+        inc.rotate(this.angle);
+        if (inc.x && inc.y) inc.multiplyEquals(this.DIAG_MOVE_CORR);
+        this.pos.plusEquals(inc);
+      }
+    }
+  </script>
+  <script id="bspScript">
+    class BSP {
+      SUB_SECTOR_IDENTIFIER = 0x8000; // 2**15 = 32768
+
+      constructor(engine) {
+        this.engine = engine;
+        this.player = engine.player;
+        this.nodes = engine.wadData.nodes;
+        this.subSectors = engine.wadData.subSectors;
+        this.segs = engine.wadData.segments;
+        this.rootNodeId = this.nodes.length - 1;
+        this.isTraverseBsp = true;
+      }
+
+      update() {
+        this.isTraverseBsp = true;
+        this.renderBspNode(this.rootNodeId);
+      }
+
+      getSubSectorHeight() {
+        var subSectorId = this.rootNodeId;
+
+        while (!subSectorId >= this.SUB_SECTOR_IDENTIFIER) {
+          var node = this.nodes[subSectorId]
+
+          var isOnBack = this.isOnBackSide(node)
+          if (isOnBack) subSectorId = this.nodes[subSectorId].backChildId;
+          else subSectorId = this.nodes[subSectorId].frontChildId;
+        }
+        var subSectorIndex = subSectorId - this.SUB_SECTOR_IDENTIFIER;
+        if (subSectorIndex < 0) {
+          var numSectors = this.subSectors.length;
+          var overshoot = (Math.floor(subSectorIndex / numSectors)) * numSectors;
+          var normalIndex = subSectorIndex - overshoot;
+          var positiveIndex = numSectors - normalIndex;
+
+          subSectorIndex = positiveIndex;
+        }
+        var subSector = this.subSectors[subSectorIndex];
+        var seg = this.segs[subSector.firstSegId];
+        return seg.frontSector.floorHeight;
+      }
+
+      angleToX(angle) {
+        var x;
+        if (angle > 0) {
+          x = SCREEN_DIST - Math.tan(this.engine.degToRad(angle)) * H_WIDTH;
+        }
+        else {
+          x = -Math.tan(this.engine.degToRad(angle)) * H_WIDTH + SCREEN_DIST;
+        }
+        return Math.floor(x);
+      }
+
+      addSegmentToFov(vertex1, vertex2) {
+        var angle1 = this.pointToAngle(vertex1);
+        var angle2 = this.pointToAngle(vertex2);
+
+        var span = this.norm(angle1 - angle2);
+        if (span >= 180) return false;
+
+        var rwAngle1 = angle1;
+
+        angle1 -= this.player.angle;
+        angle2 -= this.player.angle;
+
+        var span1 = this.norm(angle1 + H_FOV);
+        if (span1 > FOV) {
+          if (span1 >= span + FOV) {
+            return false;
+          }
+          angle1 = H_FOV;
+        }
+
+        var span2 = this.norm(H_FOV - angle2);
+        if (span2 > FOV) {
+          if (span2 >= span + FOV) {
+            return false;
+          }
+          angle2 = -H_FOV;
+        }
+        var x1 = this.angleToX(angle1);
+        var x2 = this.angleToX(angle2);
+        return [x1, x2, rwAngle1];
+      }
+
+      renderSubSector(subSectorId) {
+        var subSector = this.subSectors[subSectorId];
+
+        for (var i = 0; i < subSector.segCount; i++) {
+          let seg = this.segs[subSector.firstSegId + i];
+          var result = this.addSegmentToFov(seg.startVertex, seg.endVertex);
+          if (result) {
+            //this.engine.mapRenderer.drawSeg(seg, subSectorId);
+            //this.engine.mapRenderer.drawVerticalLines(result[0], result[1], subSectorId); // swapped for classifySegment at 3:27
+            /*SEGMENTS ENDING UP HERE, ARE THE ONES IN FOV*/
+            this.engine.segHandler.classifySegment(seg, ...result/*result[0], result[1], result[2]*/);
+          }
+        }
+      }
+
+      norm(angle) {
+        angle %= 360;
+        if (angle < 0) return angle + 360;
+        else return angle;
+
+        /*if (angle > 360) return angle - 360;
+        if (angle < 0) return angle + 360;
+        return angle;*/
+      }
+
+      checkBbox(bbox) {
+        var a = new vec2(bbox.left, bbox.bottom);
+        var b = new vec2(bbox.left, bbox.top);
+        var c = new vec2(bbox.right, bbox.top);
+        var d = new vec2(bbox.right, bbox.bottom);
+        var px = this.player.pos.x;
+        var py = this.player.pos.y;
+        var bboxSides;
+        if (px < bbox.left) {
+          if (py > bbox.top) {
+            bboxSides = [[b, a], [c, b]];
+          }
+          else if (py < bbox.bottom) {
+            bboxSides = [[b, a], [a, d]];
+          }
+          else {
+            bboxSides = [[b, a]];
+          }
+        }
+        else if (px > bbox.right) {
+          if (py > bbox.top) {
+            bboxSides = [[c, b], [d, c]];
+          }
+          else if (py < bbox.bottom) {
+            bboxSides = [[a, d], [d, c]];
+          }
+          else {
+            bboxSides = [[d, c]];
+          }
+        }
+        else {
+          if (py > bbox.top) {
+            bboxSides = [[c, b]];
+          }
+          else if (py < bbox.bottom) {
+            bboxSides = [[a, d]];
+          }
+          else return true;
+        }
+
+        for (var vs of bboxSides) {
+          var v1 = vs[0];
+          var v2 = vs[1];
+          var angle1 = this.pointToAngle(v1);
+          var angle2 = this.pointToAngle(v2);
+          var span = this.norm(angle1 - angle2);
+          angle1 -= this.player.angle;
+          var span1 = this.norm(angle1 + H_FOV);
+          if (span1 > FOV) {
+            if (span1 >= span + FOV) {
+              continue;
+            }
+          }
+          return true;
+        }
+        return false;
+      }
+
+      pointToAngle(vertex) {
+        var delta = vertex.minus(this.player.pos);
+        var rad = Math.atan2(delta.y, delta.x);
+        return this.engine.radToDeg(rad);
+      }
+
+      renderBspNode(nodeId) {
+        if (this.isTraverseBsp) {
+          if (nodeId >= this.SUB_SECTOR_IDENTIFIER) {
+            var subSectorId = nodeId - this.SUB_SECTOR_IDENTIFIER;
+            this.renderSubSector(subSectorId);
+            return undefined;
+          }
+
+          var node = this.nodes[nodeId];
+
+          var isOnBack = this.isOnBackSide(node);
+          if (isOnBack) {
+            this.renderBspNode(node.backChildId);
+            if (this.checkBbox(node.bbox.front)) {
+              this.renderBspNode(node.frontChildId);
+            }
+          }
+          else {
+            this.renderBspNode(node.frontChildId);
+            if (this.checkBbox(node.bbox.back)) {
+              this.renderBspNode(node.backChildId);
+            }
+          }
+        }
+      }
+
+      isOnBackSide(node) {
+        var dx = this.player.pos.x - node.xPartition;
+        var dy = this.player.pos.y - node.yPartition;
+        return dx * node.dyPartition - dy * node.dxPartition <= 0;
+      }
+    }
+  </script>
+
+  <script id="canvasDrawerScript">
+    class CanvasDrawer {
+      constructor(canvasId) {
+        this.canv = document.getElementById(canvasId);
+        this.ctx = this.canv.getContext("2d", { willReadFrequently: true });
+        //this.mainCtx.imageSmoothingEnabled = true;
+        this.buffer = undefined;
+        this.setBuffer();
+      }
+
+      setBuffer() {
+        this.buffer = this.ctx.createImageData(this.canv.width, this.canv.height);
+        this.clear();
+      }
+
+      pixel(x, y, col) {
+        if (
+          x < 0 ||
+          x >= this.canv.width ||
+          y < 0 ||
+          y >= this.canv.height) {
+          return;
+        }
+        var index = 4 * (this.canv.width * Math.floor(y) + Math.floor(x));
+        var data = this.buffer.data;
+        data[index] = col.r;
+        data[index + 1] = col.g;
+        data[index + 2] = col.b;
+        //data[index + 3] = 255;
+      }
+
+      clear() {
+        for (var i = 0; i < this.buffer.data.length; i++) {
+          this.buffer.data[i] = 255;
+        }
+      }
+
+      swap() {
+        this.ctx.putImageData(this.buffer, 0, 0);
+      }
+
+      circle(x, y, r, fill, outline) {
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, r, 0, 2 * Math.PI);
+        this.ctx.fillStyle = fill;
+        this.ctx.strokeStyle = outline;
+        this.ctx.fill();
+        this.ctx.stroke();
+      }
+
+      line(p1, p2, style, width) {
+        this.ctx.beginPath();
+        this.ctx.moveTo(p1.x, p1.y);
+        this.ctx.lineTo(p2.x, p2.y);
+        this.ctx.strokeStyle = style;
+        this.ctx.lineWidth = width;
+        this.ctx.stroke();
+      }
+
+      verticalLine(x, y1, y2, style) {
+        this.ctx.fillStyle = style;
+        this.ctx.fillRect(x, y1, 1, y2 - y1);
+      }
+
+      rect(x, y, w, h, style) {
+        this.ctx.fillStyle = style;
+        this.ctx.fillRect(x, y, w, h);
+      }
+    }
+
+    const Drawer = new CanvasDrawer("screen");
+  </script>
+
+  <script id="mapRendererScript">
+    class MapRenderer {
+      constructor(engine) {
+        this.engine = engine;
+        this.wadData = engine.wadData;
+        this.vertexes = this.wadData.vertexes;
+        this.linedefs = this.wadData.linedefs;
+        this.bounds = this.getMapBounds();
+        this.vertexes = this.remap(this.vertexes);
+      }
+
+      draw() {
+        //this.drawLinedefs();
+        //this.drawPlayerPos();
+      }
+
+      remap(rawVertexes) {
+        var remappedVertexes = new Array();
+        for (var raw of rawVertexes) {
+          var remapped = new vec2(
+            this.remapX(raw.x/*, 30, Drawer.canv.width - 30*/),
+            this.remapY(raw.y/*, 0, Drawer.canv.height*/)
+          );
+          remappedVertexes.push(remapped);
+        }
+        return remappedVertexes;
+      }
+
+      remapX(n, outMin = /*30*/0, outMax = Drawer.canv.width - /*30*/0) {
+        var val1 = Math.max(this.bounds.min.x, Math.min(n, this.bounds.max.x)) - this.bounds.min.x;
+        var val2 = outMax - outMin;
+        var val3 = this.bounds.max.x - this.bounds.min.x;
+        return val1 * val2 / val3 + outMin;
+      }
+
+      remapY(n, outMin = 0/*30*/, outMax = Drawer.canv.height - 0/*30*/) {
+        var val1 = Math.max(this.bounds.min.y, Math.min(n, this.bounds.max.y)) - this.bounds.min.y;
+        var val2 = outMax - outMin;
+        var val3 = this.bounds.max.y - this.bounds.min.y;
+        return Drawer.canv.height - val1 * val2 / val3 + outMin;
+      }
+
+      getMapBounds() {
+        var vsX = JSON.parse(JSON.stringify(this.vertexes));
+        var sortedX = vsX.sort(function (a, b) {
+          if (a.x < b.x) return -1;
+          if (a.x > b.x) return 1;
+          return 0;
+        });
+
+        var vsY = JSON.parse(JSON.stringify(this.vertexes));
+        var sortedY = vsY.sort(function (a, b) {
+          if (a.y < b.y) return -1;
+          if (a.y > b.y) return 1;
+          return 0;
+        });
+
+        var last = this.vertexes.length - 1;
+        var bounds = {
+          min: { x: sortedX[0].x, y: sortedY[0].y },
+          max: { x: sortedX[last].x, y: sortedY[last].y }
+        };
+
+        return bounds;
+      }
+
+      drawLinedefs() {
+        for (var ld of this.linedefs) {
+          var p1 = this.vertexes[ld.startVertexId];
+          var p2 = this.vertexes[ld.endVertexId];
+          Drawer.line(p1, p2, "red", 1);
+        }
+      }
+
+      drawVerticalLines(x1, x2, subSectorId) {
+        var color = Color.randColors[subSectorId];
+        var vt1 = new vec2(x1, 0);
+        var vb1 = new vec2(x1, WIN_HEIGHT);
+        var vt2 = new vec2(x2, 0);
+        var vb2 = new vec2(x2, WIN_HEIGHT);
+        Drawer.line(vt1, vb1, color.getStyleRGB(), 3);
+        Drawer.line(vt2, vb2, color.getStyleRGB(), 3);
+      }
+
+      drawSeg(seg, subSectorId) {
+        var v1 = this.vertexes[seg.startVertexId];
+        var v2 = this.vertexes[seg.endVertexId];
+        //var color = Color.randColors[subSectorId];
+        Drawer.line(v1, v2, "green"/*color.getStyleRGB()*/, 2);
+      }
+
+      drawFov(px, py) {
+        var x = this.engine.player.pos.x;
+        var y = this.engine.player.pos.y;
+        var angle = -this.engine.player.angle + 90;
+        var sinA1 = Math.sin(this.engine.degToRad(angle - H_FOV))
+        var cosA1 = Math.cos(this.engine.degToRad(angle - H_FOV))
+        var sinA2 = Math.sin(this.engine.degToRad(angle + H_FOV))
+        var cosA2 = Math.cos(this.engine.degToRad(angle + H_FOV))
+        var lenRay = WIN_HEIGHT;
+
+        var x1 = this.remapX(x + lenRay * sinA1);
+        var y1 = this.remapY(y + lenRay * cosA1);
+        var x2 = this.remapX(x + lenRay * sinA2);
+        var y2 = this.remapY(y + lenRay * cosA2);
+        Drawer.line(new vec2(px, py), new vec2(x1, y1), "yellow", 2);
+        Drawer.line(new vec2(px, py), new vec2(x2, y2), "yellow", 2);
+      }
+
+      drawBbox(bbox, style) {
+        var x = this.remapX(bbox.left);
+        var y = this.remapY(bbox.top);
+        var w = this.remapX(bbox.right);
+        var h = this.remapY(bbox.bottom);
+        Drawer.rect(x, y, w, h, style);
+      }
+
+      drawNode(nodeId) {
+        var node = this.engine.wadData.nodes[nodeId];
+        var bboxFront = node.bbox.front;
+        var bboxBack = node.bbox.back;
+        this.drawBbox(bboxFront, "green");
+        this.drawBbox(bboxBack, "red");
+
+        var x1 = this.remapX(node.xPartition)
+        var y1 = this.remapY(node.yPartition)
+        var x2 = this.remapX(node.xPartition + node.dxPartition);
+        var y2 = this.remapY(node.yPartition + node.dyPartition);
+        var p1 = new vec2(x1, y1);
+        var p2 = new vec2(x2, y2);
+        Drawer.line(p1, p2, "blue", 3);
+      }
+
+      drawPlayerPos() {
+        var pos = this.engine.player.pos;
+        var x = this.remapX(pos.x);
+        var y = this.remapY(pos.y);
+        this.drawFov(x, y);
+        Drawer.circle(x, y, 4, "orange", "orange");
+      }
+
+      drawVertexes() {
+        for (var v of this.vertexes) {
+          Drawer.circle(v.x, v.y, 4, "red", "black");
+        }
+      }
+    }
+  </script>
+  <script id="wadReaderScript">
+    class WADReader {
+
+      constructor(wadFile) {
+        this.wadFile = wadFile;
+        this.header = this.readHeader();
+        this.directory = this.readDirectory();
+
+      }
+
+      printDirectory() {
+        for (var entry of this.directory) {
+          console.log(entry);
+        }
+      }
+
+      readHeader() {
+        return {
+          wadType: this.readString(0, 4),
+          lumpCount: this.read4Bytes(4, undefined),
+          initOffset: this.read4Bytes(8, undefined)
+        }
+      }
+
+      readThing(offset) {
+        var thing = new Thing(
+          new vec2(
+            this.read2Bytes(offset),
+            this.read2Bytes(offset + 2)
+          ),
+          this.read2BytesUnsigned(offset + 4),
+          this.read2BytesUnsigned(offset + 6),
+          this.read2BytesUnsigned(offset + 8)
+        );
+        return thing;
+      }
+
+      readSegment(offset) {
+        var seg = new Seg(
+          this.read2Bytes(offset),
+          this.read2Bytes(offset + 2),
+          this.read2Bytes(offset + 4),
+          this.read2Bytes(offset + 6),
+          this.read2Bytes(offset + 8),
+          this.read2Bytes(offset + 10),
+        );
+        return seg;
+      }
+
+      readSubSector(offset) {
+        var subSector = new SubSector(
+          this.read2Bytes(offset),
+          this.read2Bytes(offset + 2)
+        );
+        return subSector;
+      }
+
+      readNode(offset) {
+        var node = new Node();
+
+        node.xPartition = this.read2Bytes(offset + 0);
+        node.yPartition = this.read2Bytes(offset + 2);
+        node.dxPartition = this.read2Bytes(offset + 4);
+        node.dyPartition = this.read2Bytes(offset + 6);
+
+        node.bbox.front.top = this.read2Bytes(offset + 8);
+        node.bbox.front.bottom = this.read2Bytes(offset + 10);
+        node.bbox.front.left = this.read2Bytes(offset + 12);
+        node.bbox.front.right = this.read2Bytes(offset + 14);
+
+        node.bbox.back.top = this.read2Bytes(offset + 16);
+        node.bbox.back.bottom = this.read2Bytes(offset + 18);
+        node.bbox.back.left = this.read2Bytes(offset + 20);
+        node.bbox.back.right = this.read2Bytes(offset + 22);
+
+        node.frontChildId = this.read2BytesUnsigned(offset + 24);
+        node.backChildId = this.read2BytesUnsigned(offset + 26);
+        return node;
+      }
+
+      readLinedef(offset) {
+        var linedef = new Linedef(
+          this.read2BytesUnsigned(offset + 0),
+          this.read2BytesUnsigned(offset + 2),
+          this.read2BytesUnsigned(offset + 4),
+          this.read2BytesUnsigned(offset + 6),
+          this.read2BytesUnsigned(offset + 8),
+          this.read2BytesUnsigned(offset + 10),
+          this.read2BytesUnsigned(offset + 12) //this.read2Bytes(offset + 12, undefined)
+        );
+        return linedef;
+      }
+
+      readVertex(offset) {
+        var x = this.read2Bytes(offset, undefined);
+        var y = this.read2Bytes(offset + 2, undefined);
+        return new vec2(x, y);
+      }
+
+      readTextureMap(offset) {
+        var texMap = new TextureMap(
+          this.readString(offset + 0, 8),
+          this.read4BytesUnsigned(offset + 8),
+          this.read2BytesUnsigned(offset + 12),
+          this.read2BytesUnsigned(offset + 14),
+          this.read4BytesUnsigned(offset + 16),
+          this.read2BytesUnsigned(offset + 20)
+        );
+        for (var i = 0; i < texMap.patchCount; i++) {
+          var patchMap = this.readPatchMap(offset + 22 + i * 10);
+          texMap.patchMaps.push(patchMap);
+        }
+        return texMap;
+      }
+
+      readPatchMap(offset) {
+        var patchMap = new PatchMap(
+          this.read2Bytes(offset + 0),
+          this.read2Bytes(offset + 2),
+          this.read2BytesUnsigned(offset + 4),
+          this.read2BytesUnsigned(offset + 6),
+          this.read2BytesUnsigned(offset + 8)
+        );
+        return patchMap;
+      }
+
+      readTextureHeader(offset) {
+        var texHeader = new TextureHeader(
+          this.read4BytesUnsigned(offset + 0),
+          this.read2BytesUnsigned(offset + 4)
+        );
+        for (var i = 0; i < texHeader.textureCount; i++) {
+          var tdo = this.read4BytesUnsigned(offset + 4 + i * 4);
+          texHeader.textureDataOffset.push(tdo);
+        }
+        return texHeader;
+      }
+
+      readPatchColumn(offset) {
+        var patchColumn = new PatchColumn();
+        patchColumn.topDelta = this.read1ByteUnsigned(offset + 0);
+        if (patchColumn.topDelta !== 0xff) {
+          patchColumn.length = this.read1ByteUnsigned(offset + 1);
+          patchColumn.paddingPre = this.read1ByteUnsigned(offset + 2); // unused
+          patchColumn.data = new Array();
+          for (var i = 0; i < patchColumn.length; i++) {
+            patchColumn.data.push(this.read1ByteUnsigned(offset + 3 + i));
+          }
+          patchColumn.paddingPost = this.read1ByteUnsigned(offset + 3 + patchColumn.length); // unsued
+          return { pc: patchColumn, offs: offset + 4 + patchColumn.length }
+        }
+        return { pc: patchColumn, offs: offset + 1 };
+      }
+
+      readPatchHeader(offset) {
+        var width = this.read2BytesUnsigned(offset + 0)
+        var columnOffset = new Array();
+        for (var i = 0; i < width; i++) {
+          columnOffset.push(this.read4BytesUnsigned(offset + 8 + 4 * i))
+        }
+        var patchHeader = new PatchHeader(
+          width,
+          this.read2BytesUnsigned(offset + 2),
+          this.read2Bytes(offset + 4),
+          this.read2Bytes(offset + 6),
+          columnOffset
+        );
+        return patchHeader;
+      }
+
+      readPalette(offset) {
+        var palette = new Array();
+        for (var i = 0; i < 256; i++) {
+          var r = this.read1ByteUnsigned(offset + i * 3 + 0);
+          var g = this.read1ByteUnsigned(offset + i * 3 + 1);
+          var b = this.read1ByteUnsigned(offset + i * 3 + 2);
+          palette.push(new Color(r, g, b));
+        }
+        return palette;
+      }
+
+      readSector(offset) {
+        var sector = new Sector(
+          this.read2Bytes(offset),
+          this.read2Bytes(offset + 2),
+
+          this.readString(offset + 4, 8),
+          this.readString(offset + 12, 8),
+
+          this.read2BytesUnsigned(offset + 20),
+          this.read2BytesUnsigned(offset + 22),
+          this.read2BytesUnsigned(offset + 24)
+        );
+        return sector;
+      }
+
+      readSidedef(offset) {
+        var sidedef = new Sidedef(
+          this.read2Bytes(offset),
+          this.read2Bytes(offset + 2),
+
+          this.readString(offset + 4, 8),//.toUpperCase(),
+          this.readString(offset + 12, 8),//.toUpperCase(),
+          this.readString(offset + 20, 8),//.toUpperCase(),
+
+          this.read2BytesUnsigned(offset + 28)
+        );
+        return sidedef;
+      }
+
+      readDirectory() {
+        var directory = new Array();
+        for (var i = 0; i < this.header.lumpCount; i++) {
+          var offset = this.header.initOffset + i * 16;
+          var lumpInfo = {
+            lumpOffset: this.read4Bytes(offset, undefined),
+            lumpSize: this.read4Bytes(offset + 4),
+            lumpName: this.readString(offset + 8, 8)
+          }
+          directory.push(lumpInfo);
+        }
+        return directory;
+      }
+
+      readBytes(offset, numBytes, byteFormat) {
+        var dv = new DataView(this.wadFile, offset, numBytes);
+        return dv;
+      }
+
+      readString(offset, numBytes = 8) {
+        //String.fromCharCode()
+        var max = offset + numBytes;
+        var str = "";
+        for (var i = offset; i < max; i++) {
+          var dv = this.readBytes(i, 1, undefined);
+          var charCode = dv.getInt8(0);
+          if (charCode < 32) continue; // ???
+          var char = String.fromCharCode(charCode);
+          // char = char.toUpperCase(); // ??
+          str += char;
+        }
+        return str;
+      }
+
+      read1Byte(offset, byteFormat) { //BUGGY getInt32 also!!
+        var dv = this.readBytes(offset, 1, undefined);
+        var reading = dv.getInt8(0);
+        return reading;
+      }
+
+      read1ByteUnsigned(offset, byteFormat) { //BUGGY getInt32 also!!
+        var dv = this.readBytes(offset, 1, undefined);
+        var reading = dv.getUint8(0);
+        return reading;
+      }
+
+      read2Bytes(offset, byteFormat) {
+        var dv = this.readBytes(offset, 2, undefined);
+        var littleEndian = true;
+        //!!!!! var reading = dv.getUint16(0, littleEndian);
+        var reading = dv.getInt16(0, littleEndian); //dv.getInt32(0, littleEndian); // BUG: cant read 2 bytes using getInt32
+        return reading;
+      }
+
+      read2BytesUnsigned(offset) {
+        var dv = this.readBytes(offset, 2, undefined);
+        var littleEndian = true;
+        //var reading = dv.getInt16(0, littleEndian); //dv.getInt32(0, littleEndian); // BUG: cant read 2 bytes using getInt32
+        var reading = dv.getUint16(0, littleEndian);
+        return reading;
+      }
+
+      read4Bytes(offset, byteFormat) {
+        var dv = this.readBytes(offset, 4, undefined);
+        var littleEndian = true;
+        var reading = dv.getInt32(0, littleEndian);
+        return reading;
+      }
+
+      read4BytesUnsigned(offset) {
+        var dv = this.readBytes(offset, 4, undefined);
+        var littleEndian = true;
+        var reading = dv.getUint32(0, littleEndian);
+        return reading;
+      }
+    }
+  </script>
+  <script id="wadDataScript">
+    class WADData {
+      LUMP_INDICES = {
+        THINGS: 1, LINEDEFS: 2, SIDEDEFS: 3, VERTEXES: 4, SEGS: 5,
+        SSECTORS: 6, NODES: 7, SECTORS: 8, REJECT: 9, BLOCKMAP: 10
+      }
+
+      LINEDEF_FLAGS = {
+        BLOCKING: 1, BLOCK_MONSTERS: 2, TWO_SIDED: 4, DONT_PEG_TOP: 8,
+        DONT_PEG_BOTTOM: 16, SECRET: 32, SOUND_BLOCK: 64, DONT_DRAW: 128, MAPPED: 256
+      }
+
+      /*
+      -BUG1:
+      "this" in readVertex does not reference anything when passing it like this
+      maybe pass reader and name of function as string instead
+      */
+      constructor(engine, mapName) {
+        this.reader = new WADReader(engine.wadFile);
+        this.mapIndex = this.getLumpIndex(mapName);
+        this.vertexes = this.getLumpData(
+          "readVertex", //BUG1
+          this.mapIndex + this.LUMP_INDICES.VERTEXES,
+          4
+        );
+        this.linedefs = this.getLumpData(
+          "readLinedef",
+          this.mapIndex + this.LUMP_INDICES.LINEDEFS,
+          14
+        );
+        this.nodes = this.getLumpData(
+          "readNode",
+          this.mapIndex + this.LUMP_INDICES.NODES,
+          28
+        );
+        this.subSectors = this.getLumpData(
+          "readSubSector",
+          this.mapIndex + this.LUMP_INDICES.SSECTORS,
+          4
+        );
+        this.segments = this.getLumpData(
+          "readSegment",
+          this.mapIndex + this.LUMP_INDICES.SEGS,
+          12
+        );
+        this.things = this.getLumpData(
+          "readThing",
+          this.mapIndex + this.LUMP_INDICES.THINGS,
+          10
+        );
+        this.sidedefs = this.getLumpData(
+          "readSidedef",
+          this.mapIndex + this.LUMP_INDICES.SIDEDEFS,
+          30
+        );
+        this.sectors = this.getLumpData(
+          "readSector",
+          this.mapIndex + this.LUMP_INDICES.SECTORS,
+          26
+        )
+        this.updateData();
+        this.assetData = new AssetData(this);
+      }
+
+      updateData() {
+        this.updateSidedefs();
+        this.updateLinedefs();
+        this.updateSegs();
+      }
+
+      updateSidedefs() {
+        for (var sidedef of this.sidedefs) {
+          sidedef.sector = this.sectors[sidedef.sectorId];
+        }
+      }
+
+      updateLinedefs() {
+        for (var linedef of this.linedefs) {
+          linedef.frontSidedef = this.sidedefs[linedef.frontSidedefId];
+          if (linedef.backSidedefId === 0xFFFF) {
+            linedef.backSidedef = null;
+          }
+          else {
+            linedef.backSidedef = this.sidedefs[linedef.backSidedefId];
+          }
+        }
+      }
+
+      updateSegs() {
+        for (var seg of this.segments) {
+          seg.startVertex = this.vertexes[seg.startVertexId];
+          seg.endVertex = this.vertexes[seg.endVertexId];
+          seg.linedef = this.linedefs[seg.linedefId];
+
+          var frontSidedef;
+          var backSidedef;
+          if (seg.direction) {
+            frontSidedef = seg.linedef.backSidedef;
+            backSidedef = seg.linedef.frontSidedef;
+          }
+          else {
+            frontSidedef = seg.linedef.frontSidedef;
+            backSidedef = seg.linedef.backSidedef;
+          }
+          seg.frontSector = frontSidedef.sector;
+          if (this.LINEDEF_FLAGS.TWO_SIDED & seg.linedef.flags) {
+            seg.backSector = backSidedef.sector;
+          }
+          else {
+            seg.backSector = null;
+          }
+
+          seg.angle = (seg.angle << 16) * 8.38190317e-8;
+          if (seg.angle < 0) seg.angle += 360;
+        }
+      }
+
+      printAttrs(obj) {
+        var keys = Object.keys(obj);
+        var printVals = new Array();
+        for (var key of keys) {
+          printVals.push(obj[key]);
+        }
+        console.log(printVals);
+      }
+
+      getLumpData(readerFuncName, lumpIndex, numBytes, headerLength = 0) {
+        var lumpInfo = this.reader.directory[lumpIndex];
+        var count = lumpInfo.lumpSize / numBytes; // DIVISION BY numBytes?????
+        var data = new Array();
+
+        for (var i = 0; i < count; i++) {
+          var offset = lumpInfo.lumpOffset + i * numBytes + headerLength;
+          data.push(this.reader[readerFuncName](offset));
+        }
+        return data;
+      }
+
+      getLumpIndex(lumpName) {
+        var dir = this.reader.directory;
+        for (var i = 0; i < dir.length; i++) {
+          var curEntry = dir[i];
+          if (curEntry.lumpName === lumpName)
+            return i;
+        }
+        return -1;
+      }
+    }
+  </script>
+  <script id="viewRendererScript">
+    class ViewRenderer {
+      constructor(engine) {
+        this.engine = engine;
+        this.player = engine.player;
+        this.assetData = engine.wadData.assetData;
+        this.palette = engine.wadData.assetData.palette;
+        this.sprites = this.assetData.sprites;
+        this.textures = this.assetData.textures;
+        this.screen = Drawer.canv;
+        this.colors = new Object();
+
+        this.skyId = this.assetData.skyId
+        this.skyTex = this.assetData.skyTex
+        this.skyInvScale = 160 / WIN_HEIGHT
+        this.skyTexAlt = 100
+
+        this.spriteBuffer = new OffscreenCanvas(1, 1);
+        this.bufferCtx = this.spriteBuffer.getContext("2d");
+      }
+
+      drawSprite() {
+        var img = this.sprites["SHTGA0"];
+        var x = Math.floor(H_WIDTH - img.width / 2);
+        var y = WIN_HEIGHT - img.height;
+        Drawer.ctx.drawImage(img, x, y);
+      }
+
+      drawPalette() {
+        var pal = this.palette;
+        var size = 4;
+        for (var ix = 0; ix < 16; ix++) {
+          for (var iy = 0; iy < 16; iy++) {
+            var col = pal[iy * 16 + ix];
+            Drawer.rect(ix * size, iy * size, size, size, col.style);
+          }
+        }
+      }
+
+      getColor(tex, lightLevel) {
+        var id = tex + lightLevel;
+        if (!this.colors[id]) {
+          var bc = this.palette[Color.randInt(0, 255)]
+          var tone = lightLevel / 255;
+          var newColor = new Color(bc.r * tone, bc.g * tone, bc.b * tone);
+          this.colors[id] = newColor;//Color.getRandom();
+        }
+        return this.colors[id];
+      }
+
+      drawVline(x, y1, y2, tex, light) {
+        /*var p1 = {x: x, y: y1};
+        var p2 = {x: x, y: y2};
+        var style = tex === "FLAT" ? "rgb(255,255,255)" : this.getColor(tex, light).getStyleRGB();
+        var width = 2;
+        Drawer.line(p1, p2, style, width)*/
+
+        /*if (y2 < y1) return;
+        var style = this.getColor(tex, light).style;//getStyleRGB();
+        Drawer.verticalLine(x, y1, y2, style)*/
+
+        if (y1 < y2) {
+          var color = this.getColor(tex, light);
+          this.drawColumn(x, y1, y2, color);
+        }
+      }
+
+      drawColumn(x, y1, y2, color) {
+        for (var iy = y1; iy < y2 + 1; iy++) {
+          Drawer.pixel(x, iy, color);
+        }
+      }
+
+      drawWall(
+        framebuffer, // Drawer.buffer
+        tex, // assetData.textures[n]
+        texCol, // "texture column" so texture x??
+        x, // framebuffer horizontal pos
+        y1, // framebuffer vertical start (top) pos
+        y2, // framebuffer vertical end (bottom) pos
+        texAlt, // "texture altitude" so texture y???
+        invScale,
+        lightLevel
+      ) {
+        if (y1 < y2) {
+          var texW = tex.width;
+          var texH = tex.height;
+
+          texCol = Math.floor(texCol) % texW; // can be negative??
+          if (texCol < 0) texCol *= -1;
+
+          var texY = texAlt + (y1 - H_HEIGHT) * invScale; // cast y1 to float???
+
+          for (var iy = y1; iy < y2 + 1; iy++) {
+            var texRow = Math.floor(texY) % texH; // can be negative??
+            if (texRow < 0) texRow *= -1;
+
+            var pixelIndex = 4 * (texW * Math.floor(texRow) + Math.floor(texCol));
+            var pixelData = tex.data;
+            var brightness = lightLevel / 255;
+            var col = {
+              r: pixelData[pixelIndex] * brightness,
+              g: pixelData[pixelIndex + 1] * brightness,
+              b: pixelData[pixelIndex + 2] * brightness
+            };
+            Drawer.pixel(x, iy, col);
+            texY += invScale;
+          }
+        }
+      }
+
+      drawFlatCol(screen, flatTex, x, y1, y2, lightLevel, worldZ,
+        playerAngle, playerX, playerY) {
+        var playerDirX = Math.cos(this.engine.segHandler.degToRad(playerAngle));
+        var playerDirY = Math.sin(this.engine.segHandler.degToRad(playerAngle));
+
+        for (var iy = y1; iy < y2; iy++) {
+          var z = H_WIDTH * worldZ / (H_HEIGHT - iy)
+
+          var px = playerDirX * z + playerX;
+          var py = playerDirY * z + playerY;
+
+          var leftX = -playerDirY * z + px
+          var leftY = playerDirX * z + py
+          var rightX = playerDirY * z + px
+          var rightY = -playerDirX * z + py
+
+          var dx = (rightX - leftX) / WIN_WIDTH
+          var dy = (rightY - leftY) / WIN_WIDTH
+
+          var tx = Math.floor(leftX + dx * x) & 63;
+          var ty = Math.floor(leftY + dy * x) & 63;
+
+          var pixelIndex = 4 * (flatTex.width * Math.floor(ty) + Math.floor(tx));
+          var flatData = flatTex.data;
+          var brightness = lightLevel / 255;
+          var col = {
+            r: flatData[pixelIndex] * brightness,
+            g: flatData[pixelIndex + 1] * brightness,
+            b: flatData[pixelIndex + 2] * brightness
+          }
+          Drawer.pixel(x, iy, col);
+        }
+      }
+
+      drawFlat(texId, lightLevel, x, y1, y2, worldZ) {
+        if (y1 < y2) {
+          if (texId === this.skyId) {
+            var texColumn = 2.2 * (this.player.angle + this.engine.segHandler.xToAngle[x]);
+
+            this.drawWall(undefined, this.skyTex, texColumn, x, y1, y2,
+              this.skyTexAlt, this.skyInvScale, 255);
+          }
+          else {
+            //var flatTex = this.textures[texId];
+            //if (!flatTex) flatTex = this.assetData.unknownTexture;
+            var flatTex = this.assetData.getTexture(texId);
+
+            this.drawFlatCol(undefined, flatTex,
+              x, y1, y2, lightLevel, worldZ,
+              this.player.angle, this.player.pos.x, this.player.pos.y);
+          }
+        }
+      }
+    }
+  </script>
+  <script id="segHandlerScript">
+    class SegHandler {
+
+      getXToAngleTable() {
+        var xToAngle = new Array();
+        for (var i = 0; i < WIN_WIDTH + 1; i++) {
+          var angle = Math.atan((H_WIDTH - i) / SCREEN_DIST) * 180 / Math.PI;
+          xToAngle.push(angle);
+        }
+        return xToAngle;
+      }
+
+      constructor(engine) {
+        this.MAX_SCALE = 64;
+        this.MIN_SCALE = 0.00390625;
+        this.engine = engine;
+        this.wadData = engine.wadData;
+        this.player = engine.player;
+        this.textures = this.wadData.assetData.textures;
+        this.skyId = this.wadData.assetData.skyId;
+
+        this.seg = undefined;
+        this.rwAngle1 = undefined;
+        this.screenRange = new Array();
+        this.upperClip = new Array();
+        this.lowerClip = new Array();
+        this.numSegsHandled = 0;
+
+        this.xToAngle = this.getXToAngleTable();
+
+      }
+
+      update() {
+        this.numSegsHandled = 0;
+        this.initFloorCeilClipHeight();
+        this.initScreenRange();
+      }
+
+      degToRad(d) {
+        return d * Math.PI / 180;
+      }
+
+      radToDeg(r) {
+        return r * 180 / Math.PI;
+      }
+
+      getNumberSet(start, end, step) {
+        var set = new Array();
+        for (var i = start; i < end; i += step) {
+          set.push(i);
+        }
+        return set;
+      }
+
+      getSetIntersection(set1, set2) {
+        return set1.filter(value => set2.includes(value));
+      }
+
+      subtractSets(set1, set2) {
+        return set1.filter(value => !set2.includes(value));
+      }
+
+      hasNumbers(set) {
+        return set.length > 0;
+      }
+
+      getSortedSet(set) {
+        return set.toSorted(function (a, b) { return a - b });
+      }
+
+      dist(p1, p2) {
+        var a = p1.x - p2.x;
+        var b = p1.y - p2.y;
+        var cSq = a * a + b * b;
+        return Math.sqrt(cSq);
+      }
+
+      drawSolidWallRange(x1, x2) {
+        // some aliases to shorten the following code
+        var seg = this.seg
+        var frontSector = seg.frontSector
+        var line = seg.linedef
+        var side = seg.linedef.frontSidedef
+        var renderer = this.engine.viewRenderer
+        var upperClip = this.upperClip
+        var lowerClip = this.lowerClip
+
+        // textures
+        var wallTextureId = seg.linedef.frontSidedef.middleTexture
+        var ceilTextureId = frontSector.ceilTexture
+        var floorTextureId = frontSector.floorTexture
+        var lightLevel = frontSector.lightLevel
+
+        // calculate the relative plane heights of front sector
+        var worldFrontZ1 = frontSector.ceilHeight - this.player.height
+        var worldFrontZ2 = frontSector.floorHeight - this.player.height
+
+        // check which parts must be rendered
+        var bDrawWall = side.middleTexture != '-'
+        var bDrawCeil = worldFrontZ1 > 0 || frontSector.ceilTexture === this.skyId;
+        var bDrawFloor = worldFrontZ2 < 0
+
+        // calculate the scaling factors of the left and right edges of the wall range
+        var rwNormalAngle = seg.angle + 90
+        var offsetAngle = rwNormalAngle - this.rwAngle1
+
+        var hypotenuse = this.dist(this.player.pos, seg.startVertex)
+        var rwDistance = hypotenuse * Math.cos(this.degToRad(offsetAngle))
+
+
+        var rwScale1 = this.scaleFromGlobalAngle(x1, rwNormalAngle, rwDistance)
+        // stretched line fix??
+        /*var testAngle = Math.abs(offsetAngle % 360);
+        if (testAngle >= 89 && testAngle <= 91) {
+            rwScale1 * 0.01;
+        }*/
+
+        if (x1 < x2) {
+          var scale2 = this.scaleFromGlobalAngle(x2, rwNormalAngle, rwDistance)
+          var rwScaleStep = (scale2 - rwScale1) / (x2 - x1)
+        }
+        else {
+          rwScaleStep = 0
+        }
+
+        var wallTexture = this.wadData.assetData.getTexture(wallTextureId);//this.textures[wallTextureId];
+        //if (!wallTexture) wallTexture = this.wadData.assetData.unknownTexture;
+        if (line.flags & this.wadData.LINEDEF_FLAGS["DONT_PEG_BOTTOM"]) {
+          var vTop = frontSector.floorHeight + wallTexture.height; // walltexture.height is .shape[1] from numpy???
+          var middleTexAlt = vTop - this.player.height;
+        }
+        else middleTexAlt = worldFrontZ1;
+        middleTexAlt += side.yOffset;
+        var rwOffset = hypotenuse * Math.sin(this.degToRad(offsetAngle));
+        rwOffset += seg.offset + side.xOffset;
+        var rwCenterAngle = rwNormalAngle - this.player.angle;
+
+        // determine where on the screen the wall is drawn
+        var wallY1 = H_HEIGHT - worldFrontZ1 * rwScale1
+        var wallY1Step = -rwScaleStep * worldFrontZ1
+
+        var wallY2 = H_HEIGHT - worldFrontZ2 * rwScale1
+        var wallY2Step = -rwScaleStep * worldFrontZ2
+
+        // now the rendering is carried out
+        for (var x = x1; x < x2 + 1; x++) {
+          var drawWallY1 = wallY1 - 1
+          var drawWallY2 = wallY2
+          //
+          if (bDrawCeil) {
+            var cy1 = upperClip[x] + 1
+            var cy2 = Math.floor(Math.min(drawWallY1 - 1, lowerClip[x] - 1))
+            renderer.drawFlat(ceilTextureId, lightLevel, x, cy1, cy2 + 1, worldFrontZ1);
+          }
+          //
+          if (bDrawWall) {
+            var wy1 = Math.floor(Math.max(drawWallY1, upperClip[x] + 1))
+            var wy2 = Math.floor(Math.min(drawWallY2, lowerClip[x] - 1))
+            if (wy1 < wy2) {
+              var angle = rwCenterAngle - this.xToAngle[x];
+              var textureColumn = rwDistance * Math.tan(this.degToRad(angle)) - rwOffset;
+              var invScale = 1 / rwScale1;
+              renderer.drawWall(undefined, wallTexture, textureColumn, x, wy1, wy2, middleTexAlt, invScale, lightLevel);
+            }
+          }
+          //
+          if (bDrawFloor) {
+            var fy1 = Math.floor(Math.max(drawWallY2 + 1, upperClip[x] + 1))
+            var fy2 = lowerClip[x] - 1
+            renderer.drawFlat(floorTextureId, lightLevel, x, fy1 - 1, fy2 + 1, worldFrontZ2);
+          }
+          //
+          wallY1 += wallY1Step
+          wallY2 += wallY2Step
+          rwScale1 += rwScaleStep;
+        }
+      }
+
+      scaleFromGlobalAngle(x, rwNormalAngle, rwDistance) {
+        var xAngle = this.xToAngle[x];
+        var num = SCREEN_DIST * Math.cos(this.degToRad(rwNormalAngle - xAngle - this.player.angle));
+        var den = rwDistance * Math.cos(this.degToRad(xAngle));
+
+        var scale = num / den;
+        scale = Math.min(this.MAX_SCALE, Math.max(this.MIN_SCALE, scale));
+        return scale;
+      }
+
+      initScreenRange() {
+        this.screenRange = this.getNumberSet(0, WIN_WIDTH, 1);
+      }
+
+      initFloorCeilClipHeight() {
+        /*var up = new Array();
+        var lo = new Array();
+        for (var i = 0; i < WIN_WIDTH; i++) {
+            up.push(-1);
+            lo.push(WIN_HEIGHT)
+        }
+        this.upperClip = up;
+        this.lowerClip = lo;*/
+        this.upperClip = Array(WIN_WIDTH).fill(-1);
+        this.lowerClip = Array(WIN_WIDTH).fill(WIN_HEIGHT);
+      }
+
+      drawPortalWallRange(x1, x2) {
+        // some aliases to shorten the following code
+        var seg = this.seg
+        var frontSector = seg.frontSector
+        var backSector = seg.backSector
+        var line = seg.linedef
+        var side = seg.linedef.frontSidedef
+        var renderer = this.engine.viewRenderer
+        var upperClip = this.upperClip
+        var lowerClip = this.lowerClip
+
+        // textures
+        //var upperWallTexture = side.upperTexture
+        //var lowerWallTexture = side.lowerTexture
+        var texCeilId = frontSector.ceilTexture
+        var texFloorId = frontSector.floorTexture
+        var lightLevel = frontSector.lightLevel
+
+        // calculate the relative plane heights of front && back sector
+        var worldFrontZ1 = frontSector.ceilHeight - this.player.height
+        var worldBackZ1 = backSector.ceilHeight - this.player.height
+        var worldFrontZ2 = frontSector.floorHeight - this.player.height
+        var worldBackZ2 = backSector.floorHeight - this.player.height
+
+        // sky hack
+        if (frontSector.ceilTexture === backSector.ceilTexture && frontSector.ceilTexture === this.skyId && backSector.ceilTexture === this.skyId) {
+          worldFrontZ1 = worldBackZ1;
+          //console.log(frontSector.ceilTexture, backSector.ceilTexture, this.skyId, worldFrontZ1, worldBackZ1);
+        } //else console.log(frontSector.ceilTexture, backSector.ceilTexture, this.skyId, worldFrontZ1, worldBackZ1);
+
+        // check which parts must be rendered
+        if (worldFrontZ1 != worldBackZ1 ||
+          frontSector.lightLevel != backSector.lightLevel ||
+          frontSector.ceilTexture != backSector.ceilTexture) {
+          var bDrawUpperWall = side.upperTexture != '-' && worldBackZ1 < worldFrontZ1
+          var bDrawCeil = worldFrontZ1 >= 0 || frontSector.ceilTexture === this.skyId;
+        }
+        else {
+          bDrawUpperWall = false
+          bDrawCeil = false
+        }
+
+        if (worldFrontZ2 != worldBackZ2 ||
+          frontSector.floorTexture != backSector.floorTexture ||
+          frontSector.lightLevel != backSector.lightLevel) {
+          var bDrawLowerWall = side.lowerTexture != '-' && worldBackZ2 > worldFrontZ2
+          var bDrawFloor = worldFrontZ2 <= 0
+        }
+        else {
+          bDrawLowerWall = false
+          bDrawFloor = false
+        }
+        // if nothing must be rendered, we can skip this seg
+        if (!bDrawUpperWall && !bDrawCeil && !bDrawLowerWall &&
+          !bDrawFloor) {
+          return undefined;
+        }
+
+        // calculate the scaling factors of the left && right edges of the wall range
+        var rwNormalAngle = seg.angle + 90
+        var offsetAngle = rwNormalAngle - this.rwAngle1
+
+        var hypotenuse = this.dist(this.player.pos, seg.startVertex)
+        var rwDistance = hypotenuse * Math.cos(this.degToRad(offsetAngle))
+
+        var rwScale1 = this.scaleFromGlobalAngle(x1, rwNormalAngle, rwDistance)
+        // stretched line fix ??
+        /*var testAngle = Math.abs(offsetAngle % 360);
+        if (testAngle >= 89 && testAngle <= 91) {
+            rwScale1 * 0.01;
+        }*/
+
+        if (x2 > x1) {
+          var scale2 = this.scaleFromGlobalAngle(x2, rwNormalAngle, rwDistance)
+          var rwScaleStep = (scale2 - rwScale1) / (x2 - x1)
+        }
+        else {
+          rwScaleStep = 0
+        }
+
+        if (bDrawUpperWall) {
+          var upperWallTexture = this.wadData.assetData.getTexture(side.upperTexture);//this.textures[side.upperTexture];
+          //if (!upperWallTexture) upperWallTexture = this.wadData.assetData.unknownTexture;
+
+          if (line.flags & this.wadData.LINEDEF_FLAGS['DONT_PEG_TOP']) {
+            var upperTexAlt = worldFrontZ1;
+          }
+          else {
+            var vTop = backSector.ceilHeight + upperWallTexture.height;
+            upperTexAlt = vTop - this.player.height;
+          }
+          upperTexAlt += side.yOffset;
+        }
+
+        if (bDrawLowerWall) {
+          var lowerWallTexture = this.wadData.assetData.getTexture(side.lowerTexture);//this.textures[side.lowerTexture];
+          //if (!lowerWallTexture) lowerWallTexture = this.wadData.assetData.unknownTexture;
+
+          if (line.flags & this.wadData.LINEDEF_FLAGS['DONT_PEG_BOTTOM']) {
+            var lowerTexAlt = worldFrontZ1;
+          }
+          else {
+            lowerTexAlt = worldBackZ2;
+          }
+          lowerTexAlt += side.yOffset
+        }
+
+        var segTextured = bDrawUpperWall || bDrawLowerWall;
+        if (segTextured) {
+          var rwOffset = hypotenuse * Math.sin(this.degToRad(offsetAngle));
+          rwOffset += seg.offset + side.xOffset;
+          var rwCenterAngle = rwNormalAngle - this.player.angle;
+        }
+        // the y positions of the top / bottom edges of the wall on the screen
+        var wallY1 = H_HEIGHT - worldFrontZ1 * rwScale1
+        var wallY1Step = -rwScaleStep * worldFrontZ1
+        var wallY2 = H_HEIGHT - worldFrontZ2 * rwScale1
+        var wallY2Step = -rwScaleStep * worldFrontZ2
+
+        // the y position of the top edge of the portal
+        if (bDrawUpperWall) {
+          if (worldBackZ1 > worldFrontZ2) {
+            var portalY1 = H_HEIGHT - worldBackZ1 * rwScale1
+            var portalY1Step = -rwScaleStep * worldBackZ1
+          }
+          else {
+            portalY1 = wallY2
+            portalY1Step = wallY2Step
+          }
+        }
+        if (bDrawLowerWall) {
+          if (worldBackZ2 < worldFrontZ1) {
+            var portalY2 = H_HEIGHT - worldBackZ2 * rwScale1
+            var portalY2Step = -rwScaleStep * worldBackZ2
+          }
+          else {
+            portalY2 = wallY1
+            portalY2Step = wallY1Step
+          }
+        }
+        // now the rendering is carried out
+        for (var x = x1; x < x2 + 1; x++) {
+          var drawWallY1 = wallY1 - 1;
+          var drawWallY2 = wallY2;
+          if (segTextured) {
+            var angle = rwCenterAngle - this.xToAngle[x];
+            var textureColumn = rwDistance * Math.tan(this.degToRad(angle)) - rwOffset;
+            var invScale = 1 / rwScale1;
+          }
+
+          if (bDrawUpperWall) {
+            var drawUpperWallY1 = wallY1 - 1
+            var drawUpperWallY2 = portalY1
+            //
+
+            if (bDrawCeil) {
+              var cy1 = upperClip[x] + 1
+              var cy2 = Math.floor(Math.min(drawWallY1 - 1, lowerClip[x] - 1))
+              renderer.drawFlat(texCeilId, lightLevel, x, cy1, cy2 + 1, worldFrontZ1);
+            }
+            //
+            var wy1 = Math.floor(Math.max(drawUpperWallY1, upperClip[x] + 1))
+            var wy2 = Math.floor(Math.min(drawUpperWallY2, lowerClip[x] - 1))
+            renderer.drawWall(undefined, upperWallTexture, textureColumn, x, wy1, wy2,
+              upperTexAlt, invScale, lightLevel);
+            //
+            if (upperClip[x] < wy2) {
+              upperClip[x] = wy2
+            }
+            //
+            portalY1 += portalY1Step
+          }
+          if (bDrawCeil) {
+            cy1 = upperClip[x] + 1
+            cy2 = Math.floor(Math.min(drawWallY1 - 1, lowerClip[x] - 1))
+            renderer.drawFlat(texCeilId, lightLevel, x, cy1, cy2 + 1, worldFrontZ1);
+
+            //
+            if (upperClip[x] < cy2) {
+              upperClip[x] = cy2
+            }
+          }
+          if (bDrawLowerWall) {
+            //
+            if (bDrawFloor) {
+              var fy1 = Math.floor(Math.max(drawWallY2 + 1, upperClip[x] + 1))
+              var fy2 = lowerClip[x] - 1
+              renderer.drawFlat(texFloorId, lightLevel, x, fy1 - 1, fy2 + 1, worldFrontZ2);
+            }
+            //
+            var drawLowerWallY1 = portalY2 - 1
+            var drawLowerWallY2 = wallY2
+            //
+            wy1 = Math.floor(Math.max(drawLowerWallY1, upperClip[x] + 1))
+            wy2 = Math.floor(Math.min(drawLowerWallY2, lowerClip[x] - 1))
+            renderer.drawWall(undefined, lowerWallTexture, textureColumn, x, wy1, wy2,
+              lowerTexAlt, invScale, lightLevel);
+            //
+            if (lowerClip[x] > wy1) {
+              lowerClip[x] = wy1
+            }
+            //
+            portalY2 += portalY2Step
+          }
+          if (bDrawFloor) {
+            //
+            fy1 = Math.floor(Math.max(drawWallY2 + 1, upperClip[x] + 1))
+            fy2 = lowerClip[x] - 1
+            renderer.drawFlat(texFloorId, lightLevel, x, fy1 - 1, fy2 + 1, worldFrontZ2);
+            //
+            if (lowerClip[x] > drawWallY2 + 1) {
+              lowerClip[x] = fy1
+            }
+          }
+          rwScale1 += rwScaleStep;
+          wallY1 += wallY1Step
+          wallY2 += wallY2Step
+        }
+      }
+
+      clipPortalWalls(xStart, xEnd) {
+        var currWall = this.getNumberSet(xStart, xEnd, 1);
+        var intersection = this.getSetIntersection(currWall, this.screenRange);
+        if (this.hasNumbers(intersection)) {
+          if (intersection.length === currWall.length) {
+            this.drawPortalWallRange(xStart, xEnd - 1);
+          }
+          else {
+            var arr = this.getSortedSet(intersection);
+            var x = arr[0];
+            for (var i = 0; i < arr.length - 1; i++) {
+              var x1 = arr[i];
+              var x2 = arr[i + 1];
+              if (x2 - x1 > 1) {
+                this.drawPortalWallRange(x, x1);
+                x = x2;
+              }
+            }
+            this.drawPortalWallRange(x, arr[arr.length - 1])
+          }
+        }
+      }
+
+      clipSolidWalls(xStart, xEnd) {
+        if (this.hasNumbers(this.screenRange)) {
+          var currWall = this.getNumberSet(xStart, xEnd, 1);
+          var intersection = this.getSetIntersection(currWall, this.screenRange);
+          if (this.hasNumbers(intersection)) {
+            if (intersection.length === currWall.length) {
+              this.drawSolidWallRange(xStart, xEnd - 1);
+            }
+            else {
+              var arr = this.getSortedSet(intersection);
+              var x = arr[0];
+              var x2 = arr[arr.length - 1];
+              for (var i = 0; i < arr.length - 1; i++) {
+                var x1 = arr[i];
+                x2 = arr[i + 1];
+                if (x2 - x1 > 1) {
+                  this.drawSolidWallRange(x, x1);
+                  x = x2;
+                }
+              }
+              this.drawSolidWallRange(x, x2);
+            }
+            this.screenRange = this.subtractSets(this.screenRange, intersection);
+          }
+        }
+        else {
+          this.engine.bsp.isTraverseBsp = false;
+        }
+      }
+
+      classifySegment(segment, x1, x2, rwAngle1) {
+        // player height checking hack
+        this.numSegsHandled++;
+        if (this.numSegsHandled === 1) {
+          var floorHeight = segment.frontSector.floorHeight;
+          this.engine.player.height = floorHeight + PLAYER_HEIGHT;
+        }
+        //---
+
+        this.seg = segment;
+        this.rwAngle1 = rwAngle1;
+
+        if (x1 === x2) return undefined;
+
+        var backSector = segment.backSector;
+        var frontSector = segment.frontSector;
+
+        if (!backSector) {
+          this.clipSolidWalls(x1, x2);
+          return undefined;
+        }
+
+        // wall with window
+        if (frontSector.ceilHeight !== backSector.ceilHeight ||
+          frontSector.floorHeight !== backSector.floorHeight) {
+          this.clipPortalWalls(x1, x2)
+          return undefined;
+        }
+
+        // skip rendering 
+        if (backSector.ceilTexture === frontSector.ceilTexture &&
+          backSector.floorTexture === frontSector.floorTexture &&
+          backSector.lightLevel === frontSector.lightLevel &&
+          this.seg.linedef.frontSidedef.middleTexture === "-") {
+          return undefined;
+        }
+
+        this.clipPortalWalls(x1, x2);
+      }
+    }
+  </script>
+  <script id="mainScript">
+
+
+    class DoomEngine {
+      constructor(wadFile, mapName) {
+        this.wadFile = wadFile;
+        this.wadData = new WADData(this, mapName);
+        this.mapRenderer = new MapRenderer(this);
+        this.player = new Player(this);
+        this.bsp = new BSP(this);
+        this.segHandler = new SegHandler(this);
+        this.viewRenderer = new ViewRenderer(this);
+      }
+
+      degToRad(deg) {
+        return deg * Math.PI / 180;
+      }
+
+      radToDeg(rad) {
+        return rad * 180 / Math.PI;
+      }
+
+      update() {
+        this.player.update();
+        this.segHandler.update();
+        this.bsp.update();
+        //this.viewRenderer.drawPalette();
+        //this.viewRenderer.drawSprite();
+      }
+
+      draw() {
+        Drawer.ctx.fillStyle = "black";
+        Drawer.ctx.fillRect(0, 0, Drawer.canv.width, Drawer.canv.height);
+        //Drawer.clear();
+        //Drawer.swap();
+      }
+    }
+
+    const Main = {
+      wadInput: document.getElementById("wadInput"),
+      fpsCounter: document.getElementById("fpsCounter"),
+      screenRect: Drawer.canv.getBoundingClientRect(),
+
+      wadFile: undefined,
+      engine: undefined,
+
+      heldKeys: {},
+
+      lastLoopTime: undefined,
+      loopTime: 16,
+
+      applySettings() {
+        Drawer.canv.width = WIN_WIDTH;
+        Drawer.canv.height = WIN_HEIGHT;
+        Drawer.setBuffer();
+      },
+
+      captureScreenRect() {
+        Main.screenRect = Drawer.canv.getBoundingClientRect();
+      },
+
+      async startGame(event) {
+        var li = event.target;
+        li.parentElement.style.display = "none";
+        /*try {
+            Main.engine = new DoomEngine(Main.wadFile, li.innerHTML);
+        }
+        catch (error) {
+            console.log(error);
+            alert("Something went wrong :(");
+            location.reload();
+        }*/
+        let engine = new Promise(function (resolve, reject) {
+          resolve(new DoomEngine(Main.wadFile, li.innerHTML));
+        })
+
+        try { Main.engine = await engine; }
+        catch (err) {
+          console.log(err);
+          alert("Something went wring :(");
+          location.reload();
+        }
+
+        Drawer.canv.parentElement.style.display = "block";
+        Main.loop();
+        Main.startFPSDisplay();
+        Main.captureScreenRect();
+      },
+
+      appendMapName(list, name) {
+        var li = document.createElement("li");
+        li.className = "mapChooser";
+        li.innerHTML = name;
+        li.onclick = Main.startGame;
+        list.appendChild(li);
+      },
+
+      listMapNames(file) {
+        var reader = new WADReader(file);
+        var mapNameContainer = document.getElementById("mapNameList");
+        var listTitle = document.createElement("h2");
+        listTitle.innerHTML = "Choose map to play:";
+        mapNameContainer.appendChild(listTitle);
+        for (var entry of reader.directory) {
+          if (entry.lumpSize === 0 &&
+            entry.lumpOffset !== 0 &&
+            entry.lumpName.indexOf("_") === -1 &&
+            entry.lumpName !== "REJECT") {
+            this.appendMapName(mapNameContainer, entry.lumpName);
+          }
+        }
+        if (mapNameContainer.querySelectorAll("li").length === 0) {
+          alert("No maps could be found");
+          location.reload();
+        }
+      },
+
+      captureWADFile(ev) {
+        Main.applySettings();
+        document.onkeydown = document.onkeyup = Main.collectKeyPresses;
+        Main.wadFile = ev.target.result;
+        Main.listMapNames(Main.wadFile);
+      },
+
+      getWadData(ev) {
+        var fileInput = ev.target;
+        var wadFile = fileInput.files[0];
+
+        var reader = new FileReader();
+
+        reader.onload = Main.captureWADFile;
+
+        reader.readAsArrayBuffer(wadFile);
+
+        fileInput.parentElement.parentElement.style.display = "none";
+      },
+
+      collectKeyPresses(ev) {
+        Main.heldKeys[ev.key] = ev.type === "keydown";
+      },
+
+      countLoopTime() {
+        if (!this.lastLoopTime) {
+          this.lastLoopTime = performance.now();
+          return false;
+        }
+        var delta = (performance.now() - this.lastLoopTime);
+        this.lastLoopTime = performance.now();
+        this.loopTime = delta;
+        return true;
+      },
+
+      startFPSDisplay() {
+        window.setInterval(() => { Main.fpsCounter.innerHTML = (Math.floor(1000 / this.loopTime)) + " fps" }, 1000);
+      },
+
+      // for testing only
+      drawTexture(textureId) {
+        var texture = this.engine.wadData.assetData.getTexture(textureId);
+        Drawer.clear();
+        Drawer.swap();
+        Drawer.ctx.putImageData(texture, 0, 0);
+      },
+
+      loop() {
+        var timeInitialized = Main.countLoopTime();
+        if (!timeInitialized) { window.requestAnimationFrame(Main.loop); return; }
+
+        //Main.engine.draw();
+        //Drawer.clear();
+        Main.engine.update();
+        Drawer.swap();
+        Main.engine.viewRenderer.drawSprite();
+        //Main.drawRandomTexture();
+        //Main.engine.draw(); // I use this function to clear the screen, not to flip buffer. This is why it is before update() method call
+        window.requestAnimationFrame(Main.loop);
+      },
+
+      initResOptions() {
+        var scaleOptions = document.getElementsByClassName("resChooser");
+        for (var option of scaleOptions) {
+          option.onclick = function (event) {
+            var newScale = parseInt(event.target.value);
+            SCALE = newScale;
+            WIN_WIDTH = Math.floor(DOOM_W * SCALE);
+            WIN_HEIGHT = Math.floor(DOOM_H * SCALE);
+            WIN_RES = [WIN_WIDTH, WIN_HEIGHT];
+
+            H_WIDTH = WIN_WIDTH / 2;
+            H_HEIGHT = WIN_HEIGHT / 2;
+            SCREEN_DIST = H_WIDTH / Math.tan(H_FOV * Math.PI / 180);
+          }
+        }
+      },
+
+      activateButtons(event) {
+        var relativeTouch = {
+          x: event.touches[0].pageX - Main.screenRect.x,
+          y: event.touches[0].pageY - Main.screenRect.y
+        }
+        //movement
+        Main.engine.player.setMoveIntensity(relativeTouch, Main.screenRect);
+        var forward = relativeTouch.y < Main.screenRect.height / 2;
+        if (forward) {
+          Main.heldKeys["w"] = true;
+          Main.heldKeys["s"] = false;
+        }
+        else {
+          Main.heldKeys["s"] = true;
+          Main.heldKeys["w"] = false;
+        }
+        //roatation
+        Main.engine.player.setRotationIntensity(relativeTouch, Main.screenRect);
+        var left = relativeTouch.x < Main.screenRect.width / 2;
+        if (left) {
+          Main.heldKeys["ArrowLeft"] = true;
+          Main.heldKeys["ArrowRight"] = false;
+        }
+        else {
+          Main.heldKeys["ArrowRight"] = true;
+          Main.heldKeys["ArrowLeft"] = false;
+        }
+      },
+
+      stopButtons() {
+        var keysCaptured = Object.keys(Main.heldKeys);
+        for (var key of keysCaptured) {
+          Main.heldKeys[key] = false;
+        }
+        Main.engine.player.moveIntensity = 1;
+        Main.engine.player.rotationIntensity = 1;
+      },
+
+      initTouchControls() {
+        var screen = Drawer.canv;
+        screen.ontouchstart = this.activateButtons;
+        screen.ontouchmove = this.activateButtons;
+        screen.ontouchend = this.stopButtons;
+      },
+
+      init() {
+        Main.wadInput.oninput = Main.getWadData;
+        Main.initResOptions();
+        //var enableTouchscreen = navigator.userAgent.match(/Android/i) || navigator.userAgent.match(/iPhone|iPad|iPod/i);
+        //var enableTouchscreen = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
+        var enableTouchscreen = window.matchMedia("(pointer: coarse)").matches;
+        if (enableTouchscreen) {
+          console.log("touchscreen")
+          Main.initTouchControls();
+          new ResizeObserver(Main.captureScreenRect).observe(Drawer.canv.parentElement);
+        }
+      }
+    };
+
+    window.onload = Main.init;
+  </script>
+
+</body>
+
+</html>
