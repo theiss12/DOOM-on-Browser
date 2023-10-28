@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+
+<meta charset="utf-8">
+<title>Doom Level Viewer</title>
+<link rel="stylesheet" href="css/style.css">
+
+</head>
+<body>
+
+  <div id="controlsPrompt">
+    <strong>Controls:</strong> WASD + LEFT and RIGHT arrows.<br>
+    (Render area is touchscreen enabled.)
+  </div>
+  <form id="settingsUi">
+    <div>
+      <h2>Rendering resolution</h2>
+      <input type="radio" id="res1" name="res" value="1" class="resChooser" checked>
+      <label for="res1">320x200</label><br>
+      <input type="radio" id="res2" name="res" value="2" class="resChooser">
+      <label for="res2">640x400</label><br>  
+      <input type="radio" id="res3" name="res" value="3" class="resChooser">
+      <label for="res3">960x600</label><br>
+      <input type="radio" id="res4" name="res" value="4" class="resChooser">
+      <label for="res4">1280x800</label><br>
+      <input type="radio" id="res5" name="res" value="5" class="resChooser">
+      <label for="res5">1600x1000</label><br>
+    </div>
+    <div>
+      <h2>Open your IWAD file (e.g. "DOOM1.wad"):</h2>
+      <input type="file" id="wadInput" accept=".wad">
+    </div>
+  </form>
+
+  <ul id="mapNameList">
+  </ul>
+
+  <div id="screenWrapper" class="centered">
+    <div id="fpsCounter">60 fps</div>
+    <canvas width="320" height="200" id="screen"></canvas>
+  </div>
+
+  <script src="js/color.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/vector2.js"></script>
+  <script src="js/dataTypes.js"></script>
+  <script src="js/assetData.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/bsp.js"></script>
+
+  <script src="js/canvasDrawer.js"></script>
+
+  <script src="js/mapRenderer.js"></script>
+  <script src="js/wadReader.js"></script>
+  <script src="js/wadData.js"></script>
+  <script src="js/viewRenderer.js"></script>
+  <script src="js/segHandler.js"></script>
+  <script src="js/main.js"></script>
+  
+</body>
+</html>
